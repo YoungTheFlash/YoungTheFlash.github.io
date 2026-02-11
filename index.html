@@ -48,8 +48,13 @@
 </head>
 <body>
     <div class="card">
-        <img src="qrcode.jpg" alt="请扫描二维码" class="qrcode-img">
-        
+        <img id="qr-image" src="qrcode.jpg" alt="请扫描二维码" class="qrcode-img">
+        <script>
+            // 获取当前时间的毫秒数（一串永远不会重复的数字）
+            var timestamp = new Date().getTime();
+            // 自动把这串数字作为版本号拼接到图片路径后面
+            document.getElementById('qr-image').src = 'qrcode.jpg?t=' + timestamp;
+        </script>
         <div class="description">
             <strong>请扫描上方二维码加Settle新生群</strong>
             <span>进群后将昵称改为：房间号+专业+姓名</span>
