@@ -3,6 +3,7 @@
 **期限切れのないSNSグループ招待QRコードを配信する静的ウェブサイト**
 **A static website that always serves a valid SNS group invitation QR code**
 
+<p align="center"><img src="screenshot.png" width="320" alt="Site screenshot"></p>
 <p>
   <img src="https://img.shields.io/badge/HTML5-E34F26?logo=html5&logoColor=white" alt="HTML5">
   <img src="https://img.shields.io/badge/CSS3-1572B6?logo=css3&logoColor=white" alt="CSS3">
