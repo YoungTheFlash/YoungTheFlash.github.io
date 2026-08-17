@@ -4,42 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>2026秋SIN新生群</title>
+    <!-- 引入 jsQR 库用于识别二维码 -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
-        /* 基础页面样式，实现内容垂直水平居中 */
+        /* 基础页面样式 */
         body {
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            background-color: #f4f5f7; /* 浅灰色护眼背景 */
+            background-color: #f4f5f7;
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
             margin: 0;
         }
-        /* 白色卡片容器的样式 */
+        /* 白色卡片容器 */
         .card {
             background: #ffffff;
             padding: 30px 20px;
             border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05); /* 柔和的阴影 */
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
             text-align: center;
             max-width: 320px;
             width: 85%;
         }
-        /* 标题样式 */
         .title {
             margin-top: 0;
             font-size: 20px;
             color: #333;
             margin-bottom: 20px;
         }
-        /* 切换按钮容器 */
+        /* 切换按钮 */
         .tabs {
             display: flex;
             justify-content: center;
             gap: 12px;
             margin-bottom: 20px;
         }
-        /* 切换按钮基础样式 */
         .tab-btn {
             flex: 1;
             padding: 8px 0;
@@ -53,35 +53,56 @@
             font-weight: bold;
             outline: none;
         }
-        /* 微信按钮激活状态 */
         .tab-btn.active.wechat {
             border-color: #07c160;
             color: #07c160;
             background-color: rgba(7, 193, 96, 0.05);
         }
-        /* LINE按钮激活状态 */
         .tab-btn.active.line {
             border-color: #06c755;
             color: #06c755;
             background-color: rgba(6, 199, 85, 0.05);
         }
-        /* 二维码图片的样式 */
+        /* 二维码显示区 */
         .qrcode-wrapper {
             position: relative;
             width: 100%;
-            min-height: 250px; /* 防止切换图片时高度塌陷 */
+            height: 280px; 
             display: flex;
             align-items: center;
             justify-content: center;
-        }
-        .qrcode-img {
-            max-width: 100%;
-            height: auto;
-            border-radius: 8px;
             margin-bottom: 20px;
-            transition: opacity 0.3s ease;
+            overflow: hidden;
+            background-color: #fafafa;
+            border-radius: 8px;
         }
-        /* 文字说明的样式 */
+        
+        #original-img {
+            display: none;
+        }
+
+        /* 最终呈现的 Canvas 样式 */
+        #qr-canvas {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 8px;
+            transition: opacity 0.3s ease;
+            opacity: 0; 
+            /* 保证缩放时边缘依然锐利 (兼容各浏览器) */
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
+        }
+
+        /* 加载提示 */
+        .loading {
+            position: absolute;
+            color: #999;
+            font-size: 14px;
+        }
+
+        /* 文字说明 */
         .description {
             color: #333333;
             font-size: 16px;
@@ -92,7 +113,7 @@
             color: #666666;
             font-size: 14px;
             margin-top: 6px;
-            min-height: 20px; /* 占位防止文字修改时跳动 */
+            min-height: 20px;
         }
     </style>
 </head>
@@ -100,18 +121,17 @@
     <div class="card">
         <h2 class="title">2026秋SIN新生群</h2>
         
-        <!-- 平台切换按钮 -->
         <div class="tabs">
             <button class="tab-btn wechat active" onclick="switchQR('wechat')">微信群</button>
             <button class="tab-btn line" onclick="switchQR('line')">LINE群</button>
         </div>
 
-        <!-- 二维码显示区 -->
         <div class="qrcode-wrapper">
-            <img id="qr-image" src="qrcode.JPG" alt="请扫描二维码" class="qrcode-img">
+            <div id="loading-text" class="loading">正在处理二维码...</div>
+            <img id="original-img" crossorigin="anonymous">
+            <canvas id="qr-canvas"></canvas>
         </div>
         
-        <!-- 描述区 -->
         <div class="description">
             <strong>请扫描上方二维码加Settle新生群</strong>
             <span id="desc-tip">进群后将昵称改为：房间号+专业+姓名</span>
@@ -119,57 +139,105 @@
     </div>
 
     <script>
-        // 获取需要操作的DOM元素
-        const qrImage = document.getElementById('qr-image');
+        const imgElement = document.getElementById('original-img');
+        const canvas = document.getElementById('qr-canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const loadingText = document.getElementById('loading-text');
+        
         const descTip = document.getElementById('desc-tip');
         const wechatBtn = document.querySelector('.tab-btn.wechat');
         const lineBtn = document.querySelector('.tab-btn.line');
 
-        // 初始加载时附带时间戳，防止浏览器缓存旧的微信二维码
-        const initTimestamp = new Date().getTime();
-        qrImage.src = 'qrcode.JPG?t=' + initTimestamp;
+        // 基础配置
+        const config = {
+            padding: 20 // 适当增加边距，让二维码识别率更高
+        };
 
-        /**
-         * 切换二维码及提示文字逻辑
-         * @param {string} platform - 'wechat' 或 'line'
-         */
-        function switchQR(platform) {
-            // 获取最新时间戳确保拉取到GitHub上最新覆盖的图片
-            const timestamp = new Date().getTime();
+        function processImage(src) {
+            canvas.style.opacity = 0;
+            loadingText.style.display = 'block';
+
+            imgElement.src = src + '?t=' + new Date().getTime();
             
-            // 添加简单的淡入淡出过渡效果
-            qrImage.style.opacity = 0;
-            
-            setTimeout(() => {
-                if (platform === 'wechat') {
-                    // 切换为微信二维码（注意保持和原文件名大小写一致）
-                    qrImage.src = 'qrcode.JPG?t=' + timestamp;
+            imgElement.onload = function() {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = imgElement.naturalWidth;
+                tempCanvas.height = imgElement.naturalHeight;
+                const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+                tempCtx.drawImage(imgElement, 0, 0);
+
+                const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+                if (code) {
+                    const loc = code.location;
                     
-                    // 按钮状态更新
-                    wechatBtn.classList.add('active');
-                    lineBtn.classList.remove('active');
-                    
-                    // 提示文字更新
-                    descTip.innerText = '进群后将昵称改为：房间号+专业+姓名';
-                    
-                } else if (platform === 'line') {
-                    // 切换为LINE二维码
-                    qrImage.src = 'qrcode_LINE.JPG?t=' + timestamp;
-                    
-                    // 按钮状态更新
-                    lineBtn.classList.add('active');
-                    wechatBtn.classList.remove('active');
-                    
-                    // LINE群可能不需要严格的实名备注，这里做了文字区分
-                    descTip.innerText = '请使用LINE扫描二维码加入新生群'; 
+                    const minX = Math.min(loc.topLeftCorner.x, loc.bottomLeftCorner.x);
+                    const maxX = Math.max(loc.topRightCorner.x, loc.bottomRightCorner.x);
+                    const minY = Math.min(loc.topLeftCorner.y, loc.topRightCorner.y);
+                    const maxY = Math.max(loc.bottomLeftCorner.y, loc.bottomRightCorner.y);
+
+                    let qrWidth = maxX - minX;
+                    let qrHeight = maxY - minY;
+
+                    let sideLength = Math.max(qrWidth, qrHeight);
+                    let finalCropSize = sideLength + (config.padding * 2);
+
+                    let startX = minX - ((finalCropSize - qrWidth) / 2);
+                    let startY = minY - ((finalCropSize - qrHeight) / 2);
+
+                    startX = Math.max(0, startX);
+                    startY = Math.max(0, startY);
+
+                    // 优化核心 1：不压缩像素，Canvas 画布大小设为实际裁切出的高分辨率尺寸
+                    canvas.width = finalCropSize;
+                    canvas.height = finalCropSize;
+
+                    // 优化核心 2：关闭抗锯齿平滑，保证黑白方块边缘锐利
+                    ctx.imageSmoothingEnabled = false;
+
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    // 原画质绘制到高分辨率 Canvas 上，然后由 CSS 控制展示大小
+                    ctx.drawImage(
+                        tempCanvas, 
+                        startX, startY, finalCropSize, finalCropSize, 
+                        0, 0, finalCropSize, finalCropSize
+                    );
+                } else {
+                    console.warn("未能识别出二维码位置，使用原图显示。");
+                    // 降级处理也同样保持原图分辨率
+                    canvas.width = imgElement.naturalWidth;
+                    canvas.height = imgElement.naturalHeight;
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.drawImage(imgElement, 0, 0);
                 }
-                
-                // 图片加载完成后恢复透明度
-                qrImage.onload = () => {
-                    qrImage.style.opacity = 1;
-                };
-            }, 150); // 稍微延迟以配合CSS过渡
+
+                loadingText.style.display = 'none';
+                canvas.style.opacity = 1;
+            };
+
+            imgElement.onerror = function() {
+                loadingText.innerText = "图片加载失败";
+            };
         }
+
+        function switchQR(platform) {
+            if (platform === 'wechat') {
+                wechatBtn.classList.add('active');
+                lineBtn.classList.remove('active');
+                descTip.innerText = '进群后将昵称改为：房间号+专业+姓名';
+                processImage('qrcode_Wechat.JPG');
+            } else if (platform === 'line') {
+                lineBtn.classList.add('active');
+                wechatBtn.classList.remove('active');
+                descTip.innerText = '进群后将“房间号+专业+姓名“私信我或发送至群聊';
+                processImage('qrcode_LINE.JPG');
+            }
+        }
+
+        switchQR('wechat');
     </script>
 </body>
 </html>
